@@ -106,17 +106,27 @@ class PlaylistSync:
         
         mapping = self.mappings[playlist_url]
         directory = mapping['directory']
+        archive_file = Path(directory) / 'scdl_archive.txt'
         
-        # Build scdl command
-        cmd = self._build_sync_command(playlist_url, directory)
+        # Ensure directory exists
+        Path(directory).mkdir(parents=True, exist_ok=True)
+        
+        # For first-time sync, don't use --sync flag, just download-archive
+        is_first_sync = not archive_file.exists()
         
         if dry_run:
-            # For dry run, we could implement a way to check what would be downloaded
-            # For now, return success with placeholder count
             return SyncResult(success=True, files_count=0)
         
         try:
-            self.logger.info(f"Executing: {' '.join(cmd)}")
+            if is_first_sync:
+                # First sync: just download everything with archive tracking
+                cmd = self._build_initial_sync_command(playlist_url, directory)
+                self.logger.info(f"First sync, executing: {' '.join(cmd)}")
+            else:
+                # Subsequent syncs: use --sync for proper synchronization
+                cmd = self._build_sync_command(playlist_url, directory)
+                self.logger.info(f"Sync update, executing: {' '.join(cmd)}")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
@@ -171,6 +181,48 @@ class PlaylistSync:
         
         # Sync with archive - downloads new tracks and removes tracks no longer in playlist
         cmd.extend(['--sync', str(archive_file)])
+        
+        # Add sync behavior configuration
+        sync_config = self.config.get('sync', {})
+        
+        # Original artwork and naming
+        if sync_config.get('original_art', True):
+            cmd.append('--original-art')
+        if sync_config.get('original_name', True):
+            cmd.append('--original-name')
+        
+        # Metadata handling
+        if sync_config.get('update_metadata', False):
+            cmd.append('--force-metadata')
+        
+        # Audio format
+        format_type = self.config.get('format', 'mp3')
+        if format_type == 'flac':
+            cmd.append('--flac')
+        elif format_type == 'opus':
+            cmd.append('--opus')
+        # mp3 is default, no flag needed
+        
+        return cmd
+    
+    def _build_initial_sync_command(self, playlist_url: str, directory: str) -> List[str]:
+        """Build scdl command for initial playlist download (no --sync flag)."""
+        cmd = ['scdl']
+        
+        # Playlist URL
+        cmd.extend(['-l', playlist_url])
+        
+        # Output directory
+        cmd.extend(['--path', directory])
+        
+        # Client ID
+        client_id = self.config.get_client_id()
+        if client_id:
+            cmd.extend(['--client-id', client_id])
+        
+        # Archive file for tracking downloads (but no --sync on first run)
+        archive_file = Path(directory) / 'scdl_archive.txt'
+        cmd.extend(['--download-archive', str(archive_file)])
         
         # Add sync behavior configuration
         sync_config = self.config.get('sync', {})
