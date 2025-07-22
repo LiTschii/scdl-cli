@@ -2,6 +2,8 @@
 
 Playlist synchronization tool for SoundCloud downloads using scdl. Keep your local music directories in sync with SoundCloud playlists.
 
+<!-- Test comment added to test DesktopCommander MCP git workflow -->
+
 ## Features
 
 - 🎵 **Playlist Sync**: Map SoundCloud playlists to local directories
