@@ -177,9 +177,8 @@ class PlaylistSync:
         
         # Archive file for tracking downloads
         archive_file = Path(directory) / 'scdl_archive.txt'
-        cmd.extend(['--download-archive', str(archive_file)])
         
-        # Sync with archive - downloads new tracks and removes tracks no longer in playlist
+        # Use only --sync flag which handles archive internally
         cmd.extend(['--sync', str(archive_file)])
         
         # Add sync behavior configuration
@@ -220,7 +219,7 @@ class PlaylistSync:
         if client_id:
             cmd.extend(['--client-id', client_id])
         
-        # Archive file for tracking downloads (but no --sync on first run)
+        # Archive file for tracking downloads (first run creates the archive)
         archive_file = Path(directory) / 'scdl_archive.txt'
         cmd.extend(['--download-archive', str(archive_file)])
         
