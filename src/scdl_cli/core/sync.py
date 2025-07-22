@@ -165,13 +165,33 @@ class PlaylistSync:
         if client_id:
             cmd.extend(['--client-id', client_id])
         
-        # Audio format and quality
-        format_type = self.config.get('format', 'mp3')
-        if format_type:
-            cmd.extend(['--original-art', '--original-name'])
+        # Archive file for tracking downloads
+        archive_file = Path(directory) / 'scdl_archive.txt'
+        cmd.extend(['--download-archive', str(archive_file)])
         
-        # Sync mode - only download new tracks
-        cmd.append('--sync')
+        # Sync with archive - downloads new tracks and removes tracks no longer in playlist
+        cmd.extend(['--sync', str(archive_file)])
+        
+        # Add sync behavior configuration
+        sync_config = self.config.get('sync', {})
+        
+        # Original artwork and naming
+        if sync_config.get('original_art', True):
+            cmd.append('--original-art')
+        if sync_config.get('original_name', True):
+            cmd.append('--original-name')
+        
+        # Metadata handling
+        if sync_config.get('update_metadata', False):
+            cmd.append('--force-metadata')
+        
+        # Audio format
+        format_type = self.config.get('format', 'mp3')
+        if format_type == 'flac':
+            cmd.append('--flac')
+        elif format_type == 'opus':
+            cmd.append('--opus')
+        # mp3 is default, no flag needed
         
         return cmd
     

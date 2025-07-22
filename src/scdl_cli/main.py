@@ -133,12 +133,24 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool) -> None:
 @click.option('--client-id', help='SoundCloud client ID (optional - will auto-generate if not provided)')
 @click.option('--format', default='mp3', help='Default audio format')
 @click.option('--quality', default='best', help='Default audio quality')
+@click.option('--sync-remove-deleted/--no-sync-remove-deleted', default=True, 
+              help='Remove local tracks no longer in playlist during sync')
+@click.option('--sync-update-metadata/--no-sync-update-metadata', default=False,
+              help='Force metadata updates during sync')
+@click.option('--sync-original-art/--no-sync-original-art', default=True,
+              help='Download original artwork during sync')
+@click.option('--sync-original-name/--no-sync-original-name', default=True,
+              help='Keep original file names during sync')
 @click.pass_context
 def config(
     ctx: click.Context,
     client_id: Optional[str],
     format: str,
-    quality: str
+    quality: str,
+    sync_remove_deleted: bool,
+    sync_update_metadata: bool,
+    sync_original_art: bool,
+    sync_original_name: bool
 ) -> None:
     """Configure scdl-cli settings."""
     config_mgr = ctx.obj['config']
@@ -150,7 +162,13 @@ def config(
     
     config_data = {
         'format': format,
-        'quality': quality
+        'quality': quality,
+        'sync': {
+            'remove_deleted': sync_remove_deleted,
+            'update_metadata': sync_update_metadata,
+            'original_art': sync_original_art,
+            'original_name': sync_original_name
+        }
     }
     
     # Only set client_id if provided

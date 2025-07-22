@@ -40,7 +40,13 @@ class ConfigManager:
             'client_id': '',
             'concurrent_downloads': 3,
             'timeout': 3600,
-            'verbose': False
+            'verbose': False,
+            'sync': {
+                'remove_deleted': True,  # Remove tracks no longer in playlist
+                'update_metadata': False,  # Re-download for metadata updates
+                'original_art': True,  # Download original artwork
+                'original_name': True  # Keep original file names
+            }
         }
     
     def get(self, key: str, default: Any = None) -> Any:
