@@ -155,8 +155,15 @@ def config(
     
     # Only set client_id if provided
     if client_id:
-        config_data['client_id'] = client_id
-        console.print(f"✅ Using provided client ID: {client_id[:8]}...", style="green")
+        # Test the provided client ID
+        from .utils.client_id import ClientIDManager
+        test_manager = ClientIDManager()
+        if test_manager._is_valid_client_id(client_id):
+            config_data['client_id'] = client_id
+            console.print(f"✅ Using provided client ID: {client_id[:8]}...", style="green")
+        else:
+            console.print(f"❌ Provided client ID is invalid", style="red")
+            console.print("✅ Will auto-generate client ID when needed", style="green")
     else:
         console.print("✅ Will auto-generate client ID when needed", style="green")
     
@@ -164,6 +171,14 @@ def config(
     config_mgr.save()
     
     console.print("✅ Configuration saved successfully", style="green")
+    
+    # Test the final configuration
+    console.print("🔍 Testing client ID configuration...", style="blue")
+    final_client_id = config_mgr.get_client_id()
+    if final_client_id:
+        console.print(f"✅ Client ID ready: {final_client_id[:8]}...", style="green")
+    else:
+        console.print("❌ Unable to obtain client ID", style="red")
 
 
 @main.command()
@@ -176,7 +191,7 @@ def show_config(ctx: click.Context) -> None:
     for key, value in config.data.items():
         if key == 'client_id':
             # Get actual client ID (might be auto-generated)
-            actual_value = config.get(key)
+            actual_value = config.get_client_id()
             if actual_value:
                 masked_value = actual_value[:8] + '...' + actual_value[-4:] if len(actual_value) > 12 else '***'
                 source = "(user-configured)" if value else "(auto-generated)"
@@ -194,13 +209,13 @@ def test_client_id(ctx: click.Context) -> None:
     from .utils.client_id import ClientIDManager
     
     config = ctx.obj['config']
-    client_manager = ClientIDManager(config)
+    client_manager = ClientIDManager()
     
     console.print("🔍 Testing client ID functionality...", style="blue")
     
-    # Test auto-generation
-    with console.status("Attempting to auto-generate client ID..."):
-        client_id = client_manager.get_client_id()
+    # Test getting client ID (with auto-generation)
+    with console.status("Getting client ID..."):
+        client_id = config.get_client_id()
     
     if client_id:
         console.print(f"✅ Successfully obtained client ID: {client_id[:8]}...", style="green")

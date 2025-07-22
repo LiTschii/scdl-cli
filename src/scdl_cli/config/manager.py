@@ -51,18 +51,28 @@ class ConfigManager:
         if env_value is not None:
             return env_value
         
-        # Special handling for client_id - try auto-generation if not set
-        if key == 'client_id':
-            stored_value = self.data.get(key)
-            if not stored_value:
-                # Import here to avoid circular imports
-                from ..utils.client_id import ClientIDManager
-                client_manager = ClientIDManager(self)
-                auto_id = client_manager.get_client_id()
-                if auto_id:
-                    return auto_id
-        
         return self.data.get(key, default)
+    
+    def get_client_id(self) -> Optional[str]:
+        """Get client ID with auto-generation fallback."""
+        # Check environment variables first
+        env_value = os.getenv('SCDL_CLIENT_ID')
+        if env_value:
+            return env_value
+        
+        # Check stored config
+        stored_value = self.data.get('client_id')
+        if stored_value:
+            return stored_value
+        
+        # Auto-generate if not found
+        from ..utils.client_id import ClientIDManager
+        client_manager = ClientIDManager()  # Don't pass self to avoid recursion
+        auto_id = client_manager.auto_generate_client_id()
+        if auto_id:
+            return auto_id
+        
+        return None
     
     def set(self, key: str, value: Any) -> None:
         """Set configuration value."""

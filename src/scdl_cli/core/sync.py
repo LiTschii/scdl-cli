@@ -161,7 +161,7 @@ class PlaylistSync:
         cmd.extend(['--path', directory])
         
         # Client ID
-        client_id = self.config.get('client_id')
+        client_id = self.config.get_client_id()
         if client_id:
             cmd.extend(['--client-id', client_id])
         

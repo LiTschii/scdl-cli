@@ -119,7 +119,7 @@ class ScdlWrapper:
             cmd.extend(['--path', str(output_path)])
         
         # Client ID
-        client_id = options.get('client_id') or self.config.get('client_id')
+        client_id = options.get('client_id') or self.config.get_client_id()
         if client_id:
             cmd.extend(['--client-id', client_id])
         

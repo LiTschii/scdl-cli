@@ -12,26 +12,19 @@ import time
 class ClientIDManager:
     """Manages SoundCloud client ID auto-generation and caching."""
     
-    def __init__(self, config_manager=None):
-        self.config = config_manager
+    def __init__(self):
         self.logger = logging.getLogger(__name__)
         self.cache_file = Path.home() / '.config' / 'scdl-cli' / 'client_id_cache.json'
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
     
-    def get_client_id(self) -> Optional[str]:
-        """Get a valid client ID, auto-generating if necessary."""
-        # 1. Try user-configured client ID first
-        if self.config:
-            user_client_id = self.config.get('client_id')
-            if user_client_id and self._is_valid_client_id(user_client_id):
-                return user_client_id
-        
-        # 2. Try cached auto-generated client ID
+    def auto_generate_client_id(self) -> Optional[str]:
+        """Auto-generate a client ID without config dependencies."""
+        # 1. Try cached auto-generated client ID
         cached_id = self._get_cached_client_id()
         if cached_id and self._is_valid_client_id(cached_id):
             return cached_id
         
-        # 3. Auto-generate new client ID
+        # 2. Auto-generate new client ID
         auto_id = self._auto_generate_client_id()
         if auto_id:
             self._cache_client_id(auto_id)
