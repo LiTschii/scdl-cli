@@ -1,4 +1,4 @@
-# scdl-cli
+# scli
 
 Playlist synchronization tool for SoundCloud downloads using scdl. Keep your local music directories in sync with SoundCloud playlists.
 
@@ -21,12 +21,12 @@ Playlist synchronization tool for SoundCloud downloads using scdl. Keep your loc
 2. **FFmpeg** must be installed for audio processing
 3. **scdl** must be installed: `pip install scdl`
 
-### Install scdl-cli
+### Install scli
 
 ```bash
 # From source
-git clone https://github.com/scdl-org/scdl-cli.git
-cd scdl-cli
+git clone https://github.com/scdl-org/scli.git
+cd scli
 pip install -e .
 
 # Or install dependencies directly
@@ -35,10 +35,10 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### 1. Configure scdl-cli (Optional)
+### 1. Configure scli (Optional)
 
 ```bash
-scdl-cli config
+scli config
 # Client ID is optional - will auto-generate if not provided
 # Press Enter to skip manual configuration
 ```
@@ -46,13 +46,13 @@ scdl-cli config
 ### 2. Add a playlist mapping
 
 ```bash
-scdl-cli add https://soundcloud.com/artist/sets/playlist-name ~/Music/MyPlaylist
+scli add https://soundcloud.com/artist/sets/playlist-name ~/Music/MyPlaylist
 ```
 
 ### 3. Sync all playlists
 
 ```bash
-scdl-cli sync
+scli sync
 ```
 
 That's it! Your playlists will be kept in sync with their local directories.
@@ -65,10 +65,10 @@ Add a playlist-directory mapping:
 
 ```bash
 # Add a playlist to sync to ~/Music/ChillBeats
-scdl-cli add https://soundcloud.com/user/sets/chill-beats ~/Music/ChillBeats
+scli add https://soundcloud.com/user/sets/chill-beats ~/Music/ChillBeats
 
 # Use relative paths
-scdl-cli add https://soundcloud.com/user/sets/workout ./music/workout
+scli add https://soundcloud.com/user/sets/workout ./music/workout
 ```
 
 ### `remove <playlist_url>`
@@ -76,7 +76,7 @@ scdl-cli add https://soundcloud.com/user/sets/workout ./music/workout
 Remove a playlist from synchronization:
 
 ```bash
-scdl-cli remove https://soundcloud.com/user/sets/old-playlist
+scli remove https://soundcloud.com/user/sets/old-playlist
 ```
 
 ### `list`
@@ -84,7 +84,7 @@ scdl-cli remove https://soundcloud.com/user/sets/old-playlist
 Show all configured playlist mappings:
 
 ```bash
-scdl-cli list
+scli list
 ```
 
 Example output:
@@ -103,28 +103,28 @@ Synchronize all configured playlists:
 
 ```bash
 # Sync all playlists
-scdl-cli sync
+scli sync
 
 # Sync a specific playlist only
-scdl-cli sync --playlist https://soundcloud.com/user/sets/playlist
+scli sync --playlist https://soundcloud.com/user/sets/playlist
 
 # Dry run - see what would be downloaded without downloading
-scdl-cli sync --dry-run
+scli sync --dry-run
 ```
 
 ### `config`
 
-Configure scdl-cli settings:
+Configure scli settings:
 
 ```bash
 # Interactive configuration (client ID optional)
-scdl-cli config
+scli config
 
 # Set specific options
-scdl-cli config --client-id YOUR_CLIENT_ID --format mp3 --quality best
+scli config --client-id YOUR_CLIENT_ID --format mp3 --quality best
 
 # Skip client ID (will auto-generate when needed)
-scdl-cli config --format mp3 --quality best
+scli config --format mp3 --quality best
 ```
 
 ### `show-config`
@@ -132,7 +132,7 @@ scdl-cli config --format mp3 --quality best
 Display current configuration:
 
 ```bash
-scdl-cli show-config
+scli show-config
 ```
 
 ### `test-client-id`
@@ -140,12 +140,12 @@ scdl-cli show-config
 Test client ID auto-generation:
 
 ```bash
-scdl-cli test-client-id
+scli test-client-id
 ```
 
 ## Configuration
 
-scdl-cli stores configuration in `~/.config/scdl-cli/`:
+scli stores configuration in `~/.config/scli/`:
 
 - `config.toml` - General settings
 - `playlists.json` - Playlist-directory mappings  
@@ -173,32 +173,32 @@ Override config with environment variables:
 
 ## Getting a SoundCloud Client ID
 
-To use scdl-cli, you need a SoundCloud client ID:
+To use scli, you need a SoundCloud client ID:
 
 1. Go to [SoundCloud Developers](https://developers.soundcloud.com/)
 2. Create a new app
 3. Copy the Client ID
-4. Configure: `scdl-cli config --client-id YOUR_CLIENT_ID`
+4. Configure: `scli config --client-id YOUR_CLIENT_ID`
 
 ## Workflow Example
 
 ```bash
 # 1. Set up configuration
-scdl-cli config --client-id abc123def456
+scli config --client-id abc123def456
 
 # 2. Add your favorite playlists
-scdl-cli add https://soundcloud.com/user/sets/study-music ~/Music/Study
-scdl-cli add https://soundcloud.com/user/sets/workout-beats ~/Music/Workout
-scdl-cli add https://soundcloud.com/user/sets/chill-vibes ~/Music/Chill
+scli add https://soundcloud.com/user/sets/study-music ~/Music/Study
+scli add https://soundcloud.com/user/sets/workout-beats ~/Music/Workout
+scli add https://soundcloud.com/user/sets/chill-vibes ~/Music/Chill
 
 # 3. See what you've configured
-scdl-cli list
+scli list
 
 # 4. Sync all playlists (run this regularly)
-scdl-cli sync
+scli sync
 
 # 5. Set up a cron job for automatic sync
-# Add to crontab: 0 */6 * * * /usr/local/bin/scdl-cli sync
+# Add to crontab: 0 */6 * * * /usr/local/bin/scli sync
 ```
 
 ## Development

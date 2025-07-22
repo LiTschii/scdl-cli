@@ -26,7 +26,7 @@ When working with scdl (SoundCloud Downloader) functionality:
 1. First use Context7 to get official scdl documentation
 2. Then use Perplexity to research usage patterns and best practices
 3. Reference the GitHub repository for latest updates and issues
-4. Apply findings to the scdl-cli wrapper implementation
+4. Apply findings to the scli wrapper implementation
 
 ## Git Automation Script
 

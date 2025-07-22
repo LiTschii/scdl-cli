@@ -41,7 +41,7 @@ dev = [
 ]
 
 [project.scripts]
-scdl-cli = "scdl_cli.main:main"
+scli = "scdl_cli.main:main"
 
 [project.urls]
 Homepage = "https://github.com/scdl-org/scdl-cli"
