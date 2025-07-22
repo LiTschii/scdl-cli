@@ -17,6 +17,7 @@ def validate_url(url: str) -> bool:
         # Check if it's a SoundCloud URL
         soundcloud_patterns = [
             r'^(www\.)?soundcloud\.com/.+',
+            r'^m\.soundcloud\.com/.+',  # Mobile URLs
             r'^on\.soundcloud\.com/.+',  # Short URLs
         ]
         
