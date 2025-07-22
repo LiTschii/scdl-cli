@@ -35,11 +35,12 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### 1. Configure your SoundCloud Client ID
+### 1. Configure scdl-cli (Optional)
 
 ```bash
 scdl-cli config
-# Enter your SoundCloud Client ID when prompted
+# Client ID is optional - will auto-generate if not provided
+# Press Enter to skip manual configuration
 ```
 
 ### 2. Add a playlist mapping
@@ -116,11 +117,14 @@ scdl-cli sync --dry-run
 Configure scdl-cli settings:
 
 ```bash
-# Interactive configuration
+# Interactive configuration (client ID optional)
 scdl-cli config
 
 # Set specific options
 scdl-cli config --client-id YOUR_CLIENT_ID --format mp3 --quality best
+
+# Skip client ID (will auto-generate when needed)
+scdl-cli config --format mp3 --quality best
 ```
 
 ### `show-config`
@@ -131,19 +135,29 @@ Display current configuration:
 scdl-cli show-config
 ```
 
+### `test-client-id`
+
+Test client ID auto-generation:
+
+```bash
+scdl-cli test-client-id
+```
+
 ## Configuration
 
 scdl-cli stores configuration in `~/.config/scdl-cli/`:
 
 - `config.toml` - General settings
-- `playlists.json` - Playlist-directory mappings
+- `playlists.json` - Playlist-directory mappings  
+- `client_id_cache.json` - Cached auto-generated client ID
 
-### Configuration File (`~/.config/scdl-cli/config.toml`)
+### Configuration File Example
 
+**config.toml:**
 ```toml
 format = "mp3"
 quality = "best"
-client_id = "your_soundcloud_client_id"
+client_id = "your_soundcloud_client_id"  # Optional - will auto-generate if empty
 timeout = 3600
 verbose = false
 ```

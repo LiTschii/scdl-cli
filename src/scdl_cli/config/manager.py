@@ -51,6 +51,17 @@ class ConfigManager:
         if env_value is not None:
             return env_value
         
+        # Special handling for client_id - try auto-generation if not set
+        if key == 'client_id':
+            stored_value = self.data.get(key)
+            if not stored_value:
+                # Import here to avoid circular imports
+                from ..utils.client_id import ClientIDManager
+                client_manager = ClientIDManager(self)
+                auto_id = client_manager.get_client_id()
+                if auto_id:
+                    return auto_id
+        
         return self.data.get(key, default)
     
     def set(self, key: str, value: Any) -> None:

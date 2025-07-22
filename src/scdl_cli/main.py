@@ -130,7 +130,7 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool) -> None:
 
 
 @main.command()
-@click.option('--client-id', help='SoundCloud client ID')
+@click.option('--client-id', help='SoundCloud client ID (optional - will auto-generate if not provided)')
 @click.option('--format', default='mp3', help='Default audio format')
 @click.option('--quality', default='best', help='Default audio quality')
 @click.pass_context
@@ -144,13 +144,21 @@ def config(
     config_mgr = ctx.obj['config']
     
     if client_id is None:
-        client_id = click.prompt('SoundCloud Client ID', type=str)
+        console.print("📋 Client ID is optional - scdl-cli can auto-generate one if needed", style="blue")
+        client_id = click.prompt('SoundCloud Client ID (press Enter to skip)', 
+                               default='', show_default=False, type=str)
     
     config_data = {
-        'client_id': client_id,
         'format': format,
         'quality': quality
     }
+    
+    # Only set client_id if provided
+    if client_id:
+        config_data['client_id'] = client_id
+        console.print(f"✅ Using provided client ID: {client_id[:8]}...", style="green")
+    else:
+        console.print("✅ Will auto-generate client ID when needed", style="green")
     
     config_mgr.update(config_data)
     config_mgr.save()
@@ -166,12 +174,48 @@ def show_config(ctx: click.Context) -> None:
     
     console.print("📋 Current Configuration:", style="bold")
     for key, value in config.data.items():
-        if key == 'client_id' and value:
-            # Mask client ID for security
-            masked_value = value[:8] + '...' + value[-4:] if len(value) > 12 else '***'
-            console.print(f"  {key}: {masked_value}")
+        if key == 'client_id':
+            # Get actual client ID (might be auto-generated)
+            actual_value = config.get(key)
+            if actual_value:
+                masked_value = actual_value[:8] + '...' + actual_value[-4:] if len(actual_value) > 12 else '***'
+                source = "(user-configured)" if value else "(auto-generated)"
+                console.print(f"  {key}: {masked_value} {source}")
+            else:
+                console.print(f"  {key}: (will auto-generate when needed)")
         else:
             console.print(f"  {key}: {value}")
+
+
+@main.command()
+@click.pass_context
+def test_client_id(ctx: click.Context) -> None:
+    """Test client ID auto-generation functionality."""
+    from .utils.client_id import ClientIDManager
+    
+    config = ctx.obj['config']
+    client_manager = ClientIDManager(config)
+    
+    console.print("🔍 Testing client ID functionality...", style="blue")
+    
+    # Test auto-generation
+    with console.status("Attempting to auto-generate client ID..."):
+        client_id = client_manager.get_client_id()
+    
+    if client_id:
+        console.print(f"✅ Successfully obtained client ID: {client_id[:8]}...", style="green")
+        
+        # Test validation
+        with console.status("Validating client ID..."):
+            is_valid = client_manager._is_valid_client_id(client_id)
+        
+        if is_valid:
+            console.print("✅ Client ID is valid and working", style="green")
+        else:
+            console.print("❌ Client ID validation failed", style="red")
+    else:
+        console.print("❌ Failed to obtain client ID", style="red")
+        console.print("💡 Try setting a manual client ID with: scdl-cli config --client-id YOUR_ID", style="yellow")
 
 
 if __name__ == '__main__':

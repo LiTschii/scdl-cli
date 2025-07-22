@@ -20,6 +20,7 @@ When working with scdl (SoundCloud Downloader) functionality:
 - Official GitHub repository: https://github.com/scdl-org/scdl
 - Always reference this repository for the most current information
 - Check issues and documentation for troubleshooting
+- The github repo this project is using for the cli backend is https://github.com/scdl-org/scdl
 
 ### Research Workflow
 1. First use Context7 to get official scdl documentation
