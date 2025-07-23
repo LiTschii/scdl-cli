@@ -147,8 +147,6 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool, debug: bool
               help='Keep original file names during sync')
 @click.option('--debug/--no-debug', default=None,
               help='Enable debug output from scdl')
-@click.option('--use-root/--no-use-root', default=None,
-              help='Use su for elevated permissions (rooted Android/Termux)')
 @click.pass_context
 def config(
     ctx: click.Context,
@@ -159,8 +157,7 @@ def config(
     sync_update_metadata: Optional[bool],
     sync_original_art: Optional[bool],
     sync_original_name: Optional[bool],
-    debug: Optional[bool],
-    use_root: Optional[bool]
+    debug: Optional[bool]
 ) -> None:
     """Configure scdl-cli settings."""
     config_mgr = ctx.obj['config']
@@ -170,7 +167,7 @@ def config(
         client_id is not None, format is not None, quality is not None,
         sync_remove_deleted is not None, sync_update_metadata is not None,
         sync_original_art is not None, sync_original_name is not None,
-        debug is not None, use_root is not None
+        debug is not None
     ])
     
     if not options_provided:
@@ -178,7 +175,6 @@ def config(
         console.print(f"Format: {config_mgr.get('format', 'mp3')}")
         console.print(f"Quality: {config_mgr.get('quality', 'best')}")
         console.print(f"Debug: {config_mgr.get('debug', False)}")
-        console.print(f"Use Root: {config_mgr.get('use_root', False)}")
         sync_config = config_mgr.get('sync', {})
         console.print(f"Sync - Remove Deleted: {sync_config.get('remove_deleted', True)}")
         console.print(f"Sync - Update Metadata: {sync_config.get('update_metadata', False)}")
@@ -204,8 +200,6 @@ def config(
         config_updates['quality'] = quality
     if debug is not None:
         config_updates['debug'] = debug
-    if use_root is not None:
-        config_updates['use_root'] = use_root
         
     if sync_remove_deleted is not None:
         sync_updates['remove_deleted'] = sync_remove_deleted
@@ -268,6 +262,180 @@ def show_config(ctx: click.Context) -> None:
                 console.print(f"  {key}: (will auto-generate when needed)")
         else:
             console.print(f"  {key}: {value}")
+
+
+@main.command()
+@click.pass_context
+def manage(ctx: click.Context) -> None:
+    """Interactive playlist management interface."""
+    sync = ctx.obj['sync']
+    
+    while True:
+        console.print("\n🎵 Playlist Management", style="bold blue")
+        console.print("═" * 30)
+        
+        # Show current playlists
+        playlists = sync.list_playlists()
+        if playlists:
+            console.print(f"\n📋 Current Playlists ({len(playlists)}):", style="bold")
+            for i, playlist in enumerate(playlists, 1):
+                # Truncate long URLs for display
+                url_display = playlist['url']
+                if len(url_display) > 60:
+                    url_display = url_display[:57] + "..."
+                
+                console.print(f"  {i}. {url_display}")
+                console.print(f"     → {playlist['directory']}", style="dim")
+                console.print(f"     Last sync: {playlist['last_sync']}", style="dim")
+        else:
+            console.print("\n📭 No playlists configured", style="yellow")
+        
+        # Show menu options
+        console.print("\n🔧 Options:", style="bold")
+        console.print("  1. Add new playlist")
+        console.print("  2. Remove playlist")
+        console.print("  3. Change playlist directory")
+        console.print("  4. Sync specific playlist")
+        console.print("  5. Sync all playlists")
+        console.print("  6. Exit")
+        
+        try:
+            choice = click.prompt("\nSelect option", type=int, show_default=False)
+            
+            if choice == 1:
+                # Add playlist
+                playlist_url = click.prompt("Enter playlist URL")
+                directory = click.prompt("Enter download directory", 
+                                        default=str(Path.home() / 'Music' / 'scdl'))
+                
+                result = sync.add_playlist(playlist_url, directory)
+                if result.success:
+                    console.print("✅ Playlist added successfully!", style="green")
+                else:
+                    console.print(f"❌ Failed to add playlist: {result.error}", style="red")
+            
+            elif choice == 2:
+                # Remove playlist
+                if not playlists:
+                    console.print("❌ No playlists to remove", style="red")
+                    continue
+                
+                console.print("\n📋 Select playlist to remove:")
+                for i, playlist in enumerate(playlists, 1):
+                    url_display = playlist['url']
+                    if len(url_display) > 70:
+                        url_display = url_display[:67] + "..."
+                    console.print(f"  {i}. {url_display}")
+                
+                try:
+                    selection = click.prompt("Enter playlist number", type=int) - 1
+                    if 0 <= selection < len(playlists):
+                        playlist_url = playlists[selection]['url']
+                        if click.confirm(f"Remove playlist: {playlist_url}?"):
+                            result = sync.remove_playlist(playlist_url)
+                            if result.success:
+                                console.print("✅ Playlist removed successfully!", style="green")
+                            else:
+                                console.print(f"❌ Failed to remove playlist: {result.error}", style="red")
+                    else:
+                        console.print("❌ Invalid selection", style="red")
+                except (ValueError, click.Abort):
+                    console.print("❌ Invalid input", style="red")
+            
+            elif choice == 3:
+                # Change directory
+                if not playlists:
+                    console.print("❌ No playlists configured", style="red")
+                    continue
+                
+                console.print("\n📋 Select playlist to change directory:")
+                for i, playlist in enumerate(playlists, 1):
+                    url_display = playlist['url']
+                    if len(url_display) > 50:
+                        url_display = url_display[:47] + "..."
+                    console.print(f"  {i}. {url_display}")
+                    console.print(f"     Current: {playlist['directory']}", style="dim")
+                
+                try:
+                    selection = click.prompt("Enter playlist number", type=int) - 1
+                    if 0 <= selection < len(playlists):
+                        playlist = playlists[selection]
+                        new_directory = click.prompt("Enter new directory", 
+                                                   default=playlist['directory'])
+                        
+                        # Remove old mapping and add new one
+                        sync.remove_playlist(playlist['url'])
+                        result = sync.add_playlist(playlist['url'], new_directory)
+                        if result.success:
+                            console.print("✅ Directory updated successfully!", style="green")
+                        else:
+                            console.print(f"❌ Failed to update directory: {result.error}", style="red")
+                    else:
+                        console.print("❌ Invalid selection", style="red")
+                except (ValueError, click.Abort):
+                    console.print("❌ Invalid input", style="red")
+            
+            elif choice == 4:
+                # Sync specific playlist
+                if not playlists:
+                    console.print("❌ No playlists configured", style="red")
+                    continue
+                
+                console.print("\n📋 Select playlist to sync:")
+                for i, playlist in enumerate(playlists, 1):
+                    url_display = playlist['url']
+                    if len(url_display) > 70:
+                        url_display = url_display[:67] + "..."
+                    console.print(f"  {i}. {url_display}")
+                
+                try:
+                    selection = click.prompt("Enter playlist number", type=int) - 1
+                    if 0 <= selection < len(playlists):
+                        playlist_url = playlists[selection]['url']
+                        console.print(f"🔄 Syncing playlist...", style="blue")
+                        
+                        result = sync.sync_playlist(playlist_url)
+                        if result.success:
+                            console.print(f"✅ Downloaded {result.files_count} new files", style="green")
+                        else:
+                            console.print(f"❌ Sync failed: {result.error}", style="red")
+                    else:
+                        console.print("❌ Invalid selection", style="red")
+                except (ValueError, click.Abort):
+                    console.print("❌ Invalid input", style="red")
+            
+            elif choice == 5:
+                # Sync all playlists
+                if not playlists:
+                    console.print("❌ No playlists configured", style="red")
+                    continue
+                
+                console.print(f"🔄 Syncing {len(playlists)} playlist(s)...", style="blue")
+                total_files = 0
+                
+                for playlist in playlists:
+                    console.print(f"  Syncing: {playlist['url'][:50]}...", style="dim")
+                    result = sync.sync_playlist(playlist['url'])
+                    if result.success:
+                        total_files += result.files_count
+                        console.print(f"    ✅ {result.files_count} new files", style="green")
+                    else:
+                        console.print(f"    ❌ Failed: {result.error}", style="red")
+                
+                console.print(f"\n🎉 Sync complete! Total new files: {total_files}", style="bold green")
+            
+            elif choice == 6:
+                console.print("👋 Goodbye!", style="blue")
+                break
+            
+            else:
+                console.print("❌ Invalid option. Please choose 1-6.", style="red")
+                
+        except (ValueError, click.Abort):
+            console.print("❌ Invalid input", style="red")
+        except KeyboardInterrupt:
+            console.print("\n👋 Goodbye!", style="blue")
+            break
 
 
 @main.command()
