@@ -65,15 +65,30 @@ class PlaylistSync:
         # Create directory if it doesn't exist
         dir_path = Path(directory).expanduser().absolute()
         
-        # Check for Termux shared storage and show info
+        # Handle Android shared storage with copy workaround
         termux_shared_paths = ['/storage/emulated/', '/sdcard/', '/storage/']
         is_shared_storage = any(str(dir_path).startswith(path) for path in termux_shared_paths)
         is_termux = Path('/data/data/com.termux').exists()
         
         if is_shared_storage and is_termux:
-            print(f"📱 Using Android shared storage: {dir_path}")
-            print(f"   Files will be accessible to music players and other Android apps.")
-            print(f"   Note: If you get file locking errors, try 'scli clean' and retry.")
+            # Create a private storage location for actual downloads
+            private_dir = Path.home() / 'Music' / 'scdl-downloads' / dir_path.name
+            private_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create the shared storage directory if it doesn't exist
+            dir_path.mkdir(parents=True, exist_ok=True)
+            
+            print(f"📱 ANDROID SHARED STORAGE DETECTED")
+            print(f"   Downloads will happen in private storage: {private_dir}")
+            print(f"   Files will be copied to shared storage: {dir_path}")
+            print(f"   This avoids file locking issues while keeping music accessible to Android apps.")
+            
+            # Update the directory to use private storage for scdl
+            directory = str(private_dir)
+            
+            # Store both paths for later copying
+            self._shared_storage_path = dir_path
+            self._private_storage_path = private_dir
         
         try:
             dir_path.mkdir(parents=True, exist_ok=True)
@@ -181,6 +196,12 @@ class PlaylistSync:
             
             
             if result.returncode == 0:
+                # Copy files to shared storage if using Android workaround
+                if hasattr(self, '_shared_storage_path') and hasattr(self, '_private_storage_path'):
+                    copied_count = self._copy_files_to_shared_storage()
+                    if copied_count > 0:
+                        print(f"📁 Copied {copied_count} files to shared storage for music player access")
+                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
@@ -327,4 +348,86 @@ class PlaylistSync:
             return len(recent_files)
         except Exception:
             return 0
+    
+    def _copy_files_to_shared_storage(self) -> int:
+        """Copy audio files from private storage to shared storage for Android access."""
+        try:
+            private_path = self._private_storage_path
+            shared_path = self._shared_storage_path
+            
+            if not private_path.exists():
+                return 0
+            
+            # Find all audio files in private storage
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+            copied_count = 0
+            
+            for file_path in private_path.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
+                    # Calculate relative path from private storage root
+                    relative_path = file_path.relative_to(private_path)
+                    shared_file_path = shared_path / relative_path
+                    
+                    # Create parent directories in shared storage if needed
+                    shared_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Copy file if it doesn't exist or is older/different
+                    should_copy = False
+                    if not shared_file_path.exists():
+                        should_copy = True
+                    else:
+                        # Check if file sizes differ (simple check for updates)
+                        if file_path.stat().st_size != shared_file_path.stat().st_size:
+                            should_copy = True
+                        # Check if private file is newer
+                        elif file_path.stat().st_mtime > shared_file_path.stat().st_mtime:
+                            should_copy = True
+                    
+                    if should_copy:
+                        try:
+                            import shutil
+                            shutil.copy2(file_path, shared_file_path)  # copy2 preserves metadata
+                            copied_count += 1
+                            
+                            if self.config.get('debug', False):
+                                print(f"📁 Copied: {file_path.name} → {shared_file_path}")
+                                
+                        except Exception as e:
+                            self.logger.warning(f"Failed to copy {file_path.name}: {e}")
+                            if self.config.get('debug', False):
+                                print(f"🐛 DEBUG: Copy error for {file_path.name}: {e}")
+            
+            # Trigger media scan so music players can find the files
+            if copied_count > 0:
+                self._trigger_media_scan(shared_path)
+            
+            return copied_count
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to copy files to shared storage: {e}")
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Copy operation error: {e}")
+            return 0
+    
+    def _trigger_media_scan(self, directory: Path) -> None:
+        """Trigger Android media scan so music players can find new files."""
+        try:
+            # Use Android's media scanner via am broadcast
+            import subprocess
+            scan_cmd = [
+                'am', 'broadcast', 
+                '-a', 'android.intent.action.MEDIA_SCAN_FILE',
+                '-d', f'file://{directory}'
+            ]
+            
+            # Run media scan in background, don't wait for result
+            subprocess.Popen(scan_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            if self.config.get('debug', False):
+                print(f"🔍 Triggered media scan for: {directory}")
+                
+        except Exception as e:
+            # Media scan failure is not critical
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Media scan failed (non-critical): {e}")
     
