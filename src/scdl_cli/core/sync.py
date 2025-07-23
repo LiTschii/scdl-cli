@@ -122,20 +122,26 @@ class PlaylistSync:
         dir_path = Path(directory)
         dir_path.mkdir(parents=True, exist_ok=True)
         
-        # Set directory permissions to be writable (755)
-        try:
-            import stat
-            if self.config.get('use_root', False):
-                # Use su to set permissions on rooted systems
-                chmod_cmd = ['su', '-c', f'export PATH=$PATH:/system/bin:/system/xbin && chmod -R 755 "{dir_path}"']
-                subprocess.run(chmod_cmd, capture_output=True, text=True, timeout=10)
-            else:
-                dir_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
-        except Exception as e:
-            self.logger.warning(f"Could not set directory permissions: {e}")
         
-        # For first-time sync, don't use --sync flag, just download-archive
+        # Check if archive file exists and is valid
         is_first_sync = not archive_file.exists()
+        
+        # If archive file exists but is empty or corrupted, treat as first sync
+        if archive_file.exists():
+            try:
+                if archive_file.stat().st_size == 0:
+                    if self.config.get('debug', False):
+                        print(f"🐛 DEBUG: Archive file is empty, treating as first sync")
+                    is_first_sync = True
+                elif archive_file.stat().st_size < 10:  # Very small files are likely corrupted
+                    if self.config.get('debug', False):
+                        print(f"🐛 DEBUG: Archive file is too small ({archive_file.stat().st_size} bytes), recreating")
+                    archive_file.unlink()  # Remove corrupted file
+                    is_first_sync = True
+            except Exception as e:
+                if self.config.get('debug', False):
+                    print(f"🐛 DEBUG: Error checking archive file: {e}, treating as first sync")
+                is_first_sync = True
         
         if dry_run:
             return SyncResult(success=True, files_count=0)
@@ -172,49 +178,8 @@ class PlaylistSync:
                 if result.stderr:
                     print(f"🐛 DEBUG: STDERR:\n{result.stderr}")
             
-            # Check for specific locking issues in output
-            stderr_text = result.stderr or ""
-            if "Could not acquire lock" in stderr_text:
-                # Try to fix permissions with root and retry once
-                if self.config.get('use_root', False):
-                    self.logger.info("Locking issue detected, trying to fix permissions with root...")
-                    self._fix_file_permissions_with_root(directory)
-                    
-                    # Retry the command once
-                    if self.config.get('debug', False):
-                        print("🔄 Retrying download after permission fix...")
-                    
-                    retry_result = subprocess.run(
-                        cmd if not self.config.get('use_root', False) else cmd,  # Same command
-                        capture_output=True,
-                        text=True,
-                        timeout=3600
-                    )
-                    
-                    if self.config.get('debug', False):
-                        print(f"🐛 DEBUG: Retry return code: {retry_result.returncode}")
-                        if retry_result.stderr:
-                            print(f"🐛 DEBUG: Retry STDERR:\n{retry_result.stderr}")
-                    
-                    # Use retry result instead of original
-                    result = retry_result
-                    stderr_text = result.stderr or ""
-                
-                # If still failing after retry (or no root permissions)
-                if "Could not acquire lock" in stderr_text:
-                    error_msg = "File locking issue detected. This might be due to:\n"
-                    error_msg += "- Directory permission problems\n"
-                    error_msg += "- Another scdl process running\n"
-                    error_msg += "- File system access issues\n"
-                    if not self.config.get('use_root', False):
-                        error_msg += f"\nTry: scli config --use-root\nOr manually: chmod -R 755 '{directory}'"
-                    return SyncResult(success=False, error=error_msg)
             
             if result.returncode == 0:
-                # Fix file permissions with root if enabled and locking issues occurred
-                if self.config.get('use_root', False) and "Could not acquire lock" in stderr_text:
-                    self._fix_file_permissions_with_root(directory)
-                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
@@ -222,9 +187,6 @@ class PlaylistSync:
                 # Count new files (basic heuristic)
                 files_count = self._count_new_files(directory)
                 
-                # If no files were counted but scdl succeeded, check if locking caused skips
-                if files_count == 0 and "Skipping" in stderr_text:
-                    return SyncResult(success=False, error="Files were skipped due to locking issues. Check directory permissions.")
                 
                 return SyncResult(success=True, files_count=files_count)
             else:
@@ -339,21 +301,6 @@ class PlaylistSync:
         
         return cmd
     
-    def _fix_file_permissions_with_root(self, directory: str) -> None:
-        """Use su to fix file permissions when locking issues occur."""
-        try:
-            # Fix permissions on directory and all files
-            fix_cmd = ['su', '-c', f'export PATH=$PATH:/system/bin:/system/xbin && chmod -R 777 "{directory}"']
-            result = subprocess.run(fix_cmd, capture_output=True, text=True, timeout=30)
-            
-            if self.config.get('debug', False):
-                print(f"🐛 DEBUG: Permission fix command: {' '.join(fix_cmd)}")
-                print(f"🐛 DEBUG: Permission fix result: {result.returncode}")
-                if result.stderr:
-                    print(f"🐛 DEBUG: Permission fix stderr: {result.stderr}")
-                    
-        except Exception as e:
-            self.logger.warning(f"Could not fix permissions with root: {e}")
     
     def _count_new_files(self, directory: str) -> int:
         """Count recently downloaded files (basic heuristic)."""

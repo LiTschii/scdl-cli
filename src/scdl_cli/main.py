@@ -439,6 +439,49 @@ def manage(ctx: click.Context) -> None:
 
 
 @main.command()
+@click.option('--playlist', help='Clean specific playlist URL only')
+@click.pass_context
+def clean(ctx: click.Context, playlist: Optional[str]) -> None:
+    """Clean corrupted archive files to fix sync issues."""
+    sync = ctx.obj['sync']
+    
+    if playlist:
+        playlists_to_clean = [playlist]
+        console.print(f"🧹 Cleaning archive for playlist: {playlist}", style="blue")
+    else:
+        playlists = sync.list_playlists()
+        if not playlists:
+            console.print("📭 No playlists configured", style="yellow")
+            return
+        playlists_to_clean = [p['url'] for p in playlists]
+        console.print(f"🧹 Cleaning archives for {len(playlists_to_clean)} playlist(s)", style="blue")
+    
+    cleaned_count = 0
+    
+    for playlist_url in playlists_to_clean:
+        if playlist_url in sync.mappings:
+            directory = sync.mappings[playlist_url]['directory']
+            archive_file = Path(directory) / 'scdl_archive.txt'
+            
+            if archive_file.exists():
+                try:
+                    archive_file.unlink()
+                    console.print(f"✅ Cleaned archive for: {playlist_url[:50]}...", style="green")
+                    cleaned_count += 1
+                except Exception as e:
+                    console.print(f"❌ Failed to clean {playlist_url[:50]}...: {e}", style="red")
+            else:
+                console.print(f"ℹ️  No archive file found for: {playlist_url[:50]}...", style="dim")
+        else:
+            console.print(f"❌ Playlist not found: {playlist_url}", style="red")
+    
+    if cleaned_count > 0:
+        console.print(f"\n🎉 Cleaned {cleaned_count} archive file(s). Next sync will be treated as first-time sync.", style="bold green")
+    else:
+        console.print(f"\n📭 No archive files needed cleaning.", style="yellow")
+
+
+@main.command()
 @click.pass_context
 def test_client_id(ctx: click.Context) -> None:
     """Test client ID auto-generation functionality."""
