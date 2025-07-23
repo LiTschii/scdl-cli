@@ -28,6 +28,9 @@ When working with scdl (SoundCloud Downloader) functionality:
 3. Reference the GitHub repository for latest updates and issues
 4. Apply findings to the scli wrapper implementation
 
+### Documentation Research
+- Use scdl-Docs for getting documentation straight from the scdl github repo
+
 ## Git Automation Script
 
 This repository includes a git automation script (`git-commit.sh`) that simplifies the git workflow when working with Claude Code.

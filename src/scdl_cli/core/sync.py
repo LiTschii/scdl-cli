@@ -127,12 +127,24 @@ class PlaylistSync:
                 cmd = self._build_sync_command(playlist_url, directory)
                 self.logger.info(f"Sync update, executing: {' '.join(cmd)}")
             
+            # Show command and output when debug is enabled
+            if self.config.get('debug', False):
+                print(f"\n🐛 DEBUG: Executing command: {' '.join(cmd)}")
+            
             result = subprocess.run(
                 cmd,
                 capture_output=True,
                 text=True,
                 timeout=3600  # 1 hour timeout
             )
+            
+            # Show output when debug is enabled
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Return code: {result.returncode}")
+                if result.stdout:
+                    print(f"🐛 DEBUG: STDOUT:\n{result.stdout}")
+                if result.stderr:
+                    print(f"🐛 DEBUG: STDERR:\n{result.stderr}")
             
             if result.returncode == 0:
                 # Update last sync time
