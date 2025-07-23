@@ -187,6 +187,13 @@ class PlaylistSync:
             
             
             if result.returncode == 0:
+                # Add track URLs to metadata if we have them
+                try:
+                    self._add_track_urls_to_metadata(directory, result.stderr or "")
+                except Exception as e:
+                    if self.config.get('debug', False):
+                        print(f"🐛 DEBUG: Failed to add URLs to metadata: {e}")
+                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
@@ -249,9 +256,8 @@ class PlaylistSync:
         # Use only --sync flag which handles archive internally
         cmd.extend(['--sync', str(archive_file)])
         
-        # Add debug flag if enabled
-        if self.config.get('debug', False):
-            cmd.append('--debug')
+        # Always enable debug to capture track URLs for metadata
+        cmd.append('--debug')
         
         # Add sync behavior configuration
         sync_config = self.config.get('sync', {})
@@ -297,9 +303,8 @@ class PlaylistSync:
         archive_file = Path(directory) / 'scdl_archive.txt'
         cmd.extend(['--download-archive', str(archive_file)])
         
-        # Add debug flag if enabled
-        if self.config.get('debug', False):
-            cmd.append('--debug')
+        # Always enable debug to capture track URLs for metadata
+        cmd.append('--debug')
         
         # Add sync behavior configuration
         sync_config = self.config.get('sync', {})
@@ -358,4 +363,119 @@ class PlaylistSync:
             return len(recent_files)
         except Exception:
             return 0
+    
+    def _add_track_urls_to_metadata(self, directory: str, scdl_output: str) -> None:
+        """Extract track URLs from scdl output and add them to metadata under composer field."""
+        try:
+            import re
+            from pathlib import Path
+            
+            # Find track URLs and titles in the scdl debug output
+            # Look for lines like "Downloading [Track Title]" followed by track info
+            url_pattern = r"permalink_url='([^']*soundcloud\.com/[^']*)'"
+            title_pattern = r"title='([^']*?)'"
+            
+            # Extract URL and title pairs
+            urls = re.findall(url_pattern, scdl_output)
+            titles = re.findall(title_pattern, scdl_output)
+            
+            if not urls:
+                return
+            
+            # Create a mapping of cleaned titles to URLs
+            title_url_map = {}
+            for i, (url, title) in enumerate(zip(urls, titles)):
+                # Clean title for filename matching
+                clean_title = self._clean_filename(title)
+                title_url_map[clean_title] = url
+                
+                if self.config.get('debug', False):
+                    print(f"🔗 Found track: {title} -> {url}")
+            
+            # Find recently downloaded audio files and add URLs to metadata
+            path = Path(directory)
+            if not path.exists():
+                return
+            
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+            
+            # Look for recent files (last 5 minutes)
+            import time
+            current_time = time.time()
+            recent_threshold = current_time - 300
+            
+            for file_path in path.rglob('*'):
+                if (file_path.is_file() and 
+                    file_path.suffix.lower() in audio_extensions and 
+                    file_path.stat().st_mtime > recent_threshold):
+                    
+                    # Try to match filename to title
+                    filename_base = file_path.stem.lower()
+                    matched_url = None
+                    
+                    # Find the best matching URL for this file
+                    for clean_title, url in title_url_map.items():
+                        if clean_title.lower() in filename_base:
+                            matched_url = url
+                            break
+                    
+                    if matched_url:
+                        self._add_url_to_file_metadata(file_path, matched_url)
+                        if self.config.get('debug', False):
+                            print(f"🔗 Added URL to {file_path.name}")
+                        
+        except Exception as e:
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Error in URL extraction: {e}")
+    
+    def _clean_filename(self, title: str) -> str:
+        """Clean title for filename matching."""
+        import re
+        # Remove characters that are typically removed from filenames
+        cleaned = re.sub(r'[<>:"/\\|?*]', '', title)
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
+        return cleaned
+    
+    def _add_url_to_file_metadata(self, file_path: Path, url: str) -> None:
+        """Add SoundCloud URL to file metadata under composer field."""
+        try:
+            # Try to import mutagen for metadata editing
+            from mutagen import File
+            from mutagen.id3 import ID3, TCOM
+            from mutagen.mp4 import MP4
+            from mutagen.flac import FLAC
+            
+            audio_file = File(file_path)
+            if audio_file is None:
+                return
+            
+            # Handle different file formats
+            if file_path.suffix.lower() == '.mp3':
+                # MP3 files - use ID3 tags
+                if audio_file.tags is None:
+                    audio_file.add_tags()
+                audio_file.tags.add(TCOM(encoding=3, text=[url]))
+                
+            elif file_path.suffix.lower() == '.m4a':
+                # M4A files - use MP4 tags
+                audio_file['\xa9wrt'] = [url]  # Composer field in MP4
+                
+            elif file_path.suffix.lower() == '.flac':
+                # FLAC files
+                audio_file['COMPOSER'] = url
+                
+            else:
+                # Try generic approach for other formats
+                if hasattr(audio_file, 'tags') and audio_file.tags:
+                    audio_file.tags['COMPOSER'] = url
+            
+            audio_file.save()
+            
+        except ImportError:
+            # mutagen not available - skip metadata editing
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: mutagen not available for metadata editing")
+        except Exception as e:
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Error adding URL to {file_path.name}: {e}")
     
