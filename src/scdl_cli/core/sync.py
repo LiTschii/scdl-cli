@@ -126,6 +126,9 @@ class PlaylistSync:
         dir_path = Path(directory)
         dir_path.mkdir(parents=True, exist_ok=True)
         
+        # Count existing audio files before sync
+        files_before_sync = self._count_audio_files(directory)
+        
         
         # Check if archive file exists and is valid
         is_first_sync = not archive_file.exists()
@@ -166,24 +169,82 @@ class PlaylistSync:
             # Show clean progress or debug info
             if self.config.get('debug', False):
                 print(f"\n🐛 DEBUG: Executing command: {' '.join(cmd)}")
-            else:
-                # Show clean progress without debug noise
-                print(f"🔄 Downloading tracks from playlist...")
             
-            result = subprocess.run(
+            # Use Popen for real-time output parsing
+            process = subprocess.Popen(
                 cmd,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                timeout=3600  # 1 hour timeout
+                bufsize=1,
+                universal_newlines=True
             )
             
-            # Show output when debug is enabled
-            if self.config.get('debug', False):
-                print(f"🐛 DEBUG: Return code: {result.returncode}")
-                if result.stdout:
-                    print(f"🐛 DEBUG: STDOUT:\n{result.stdout}")
-                if result.stderr:
-                    print(f"🐛 DEBUG: STDERR:\n{result.stderr}")
+            # Parse output in real-time using threads
+            stdout_lines = []
+            stderr_lines = []
+            
+            import threading
+            import queue
+            
+            def read_stream(stream, line_list, output_queue):
+                for line in iter(stream.readline, ''):
+                    line_list.append(line)
+                    output_queue.put(('line', line.strip()))
+                stream.close()
+            
+            # Create queue for real-time output
+            output_queue = queue.Queue()
+            
+            # Start threads to read stdout and stderr
+            stdout_thread = threading.Thread(target=read_stream, args=(process.stdout, stdout_lines, output_queue))
+            stderr_thread = threading.Thread(target=read_stream, args=(process.stderr, stderr_lines, output_queue))
+            
+            stdout_thread.daemon = True
+            stderr_thread.daemon = True
+            stdout_thread.start()
+            stderr_thread.start()
+            
+            # Process output in real-time
+            while process.poll() is None or not output_queue.empty():
+                try:
+                    msg_type, line = output_queue.get(timeout=0.1)
+                    if msg_type == 'line' and line:
+                        if not self.config.get('debug', False):
+                            self._parse_and_show_progress(line)
+                        else:
+                            print(f"🐛 {line}")
+                except queue.Empty:
+                    continue
+            
+            # Wait for threads to complete
+            stdout_thread.join(timeout=1)
+            stderr_thread.join(timeout=1)
+            
+            # Process any remaining queued output
+            while not output_queue.empty():
+                try:
+                    msg_type, line = output_queue.get_nowait()
+                    if msg_type == 'line' and line:
+                        if not self.config.get('debug', False):
+                            self._parse_and_show_progress(line)
+                        else:
+                            print(f"🐛 {line}")
+                except queue.Empty:
+                    break
+            
+            # Create result object for compatibility
+            class ProcessResult:
+                def __init__(self, returncode, stdout, stderr):
+                    self.returncode = returncode
+                    self.stdout = stdout
+                    self.stderr = stderr
+            
+            result = ProcessResult(
+                process.returncode,
+                '\n'.join(stdout_lines),
+                '\n'.join(stderr_lines)
+            )
             
             
             if result.returncode == 0:
@@ -194,12 +255,13 @@ class PlaylistSync:
                     if self.config.get('debug', False):
                         print(f"🐛 DEBUG: Failed to add URLs to metadata: {e}")
                 
+                # Count files after sync and calculate new files
+                files_after_sync = self._count_audio_files(directory)
+                files_count = files_after_sync - files_before_sync
+                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
-                
-                # Count new files (basic heuristic)
-                files_count = self._count_new_files(directory)
                 
                 # Check if files were skipped due to locking issues
                 stderr_text = result.stderr or ""
@@ -363,6 +425,44 @@ class PlaylistSync:
             return len(recent_files)
         except Exception:
             return 0
+    
+    def _count_audio_files(self, directory: str) -> int:
+        """Count all audio files in directory."""
+        try:
+            path = Path(directory)
+            if not path.exists():
+                return 0
+            
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+            return len([f for f in path.rglob('*') 
+                       if f.is_file() and f.suffix.lower() in audio_extensions])
+        except Exception:
+            return 0
+    
+    def _parse_and_show_progress(self, line: str) -> None:
+        """Parse scdl output line and show meaningful progress."""
+        import re
+        
+        # Look for track download start
+        if "Track n°" in line and "Downloading" in line:
+            # Extract track number and name
+            match = re.search(r'Track n°(\d+).*?Downloading (.+)', line)
+            if match:
+                track_num = match.group(1)
+                track_name = match.group(2)
+                print(f"🎵 Downloading: {track_name} (Track {track_num})")
+        
+        # Look for playlist info
+        elif "Found a playlist" in line:
+            print(f"📋 Found playlist, analyzing tracks...")
+        
+        # Look for completion or errors
+        elif "Skipping" in line:
+            print(f"⚠️  Skipped: Already exists or locked")
+        
+        # Show important errors
+        elif "Could not acquire lock" in line:
+            print(f"🔒 File locking issue detected")
     
     def _add_track_urls_to_metadata(self, directory: str, scdl_output: str) -> None:
         """Extract track URLs from scdl output and add them to metadata under composer field."""
