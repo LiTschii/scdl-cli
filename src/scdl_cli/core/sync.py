@@ -65,14 +65,30 @@ class PlaylistSync:
         # Create directory if it doesn't exist
         dir_path = Path(directory).expanduser().absolute()
         
-        # Check for Termux shared storage issues
+        # Handle Android shared storage with symlink workaround
         termux_shared_paths = ['/storage/emulated/', '/sdcard/', '/storage/']
-        if any(str(dir_path).startswith(path) for path in termux_shared_paths):
-            # Detect if we're in Termux
-            if Path('/data/data/com.termux').exists():
-                print("⚠️  WARNING: You're using Android shared storage which doesn't support file locking.")
-                print("   This may cause 'Could not acquire lock' errors with scdl.")
-                print(f"   Consider using Termux private storage instead: $HOME/Music/scdl/")
+        is_shared_storage = any(str(dir_path).startswith(path) for path in termux_shared_paths)
+        is_termux = Path('/data/data/com.termux').exists()
+        
+        if is_shared_storage and is_termux:
+            # Create a private storage location for actual downloads
+            private_dir = Path.home() / 'Music' / 'scdl-downloads' / dir_path.name
+            private_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Create the shared storage directory if it doesn't exist
+            dir_path.mkdir(parents=True, exist_ok=True)
+            
+            print(f"🔗 ANDROID SHARED STORAGE DETECTED")
+            print(f"   Downloads will happen in private storage: {private_dir}")
+            print(f"   Music files will be symlinked to shared storage: {dir_path}")
+            print(f"   This avoids file locking issues while keeping music accessible to Android apps.")
+            
+            # Update the directory to use private storage for scdl
+            directory = str(private_dir)
+            
+            # Store both paths for later symlinking
+            self._shared_storage_path = dir_path
+            self._private_storage_path = private_dir
         
         try:
             dir_path.mkdir(parents=True, exist_ok=True)
@@ -180,6 +196,10 @@ class PlaylistSync:
             
             
             if result.returncode == 0:
+                # Create symlinks if using shared storage workaround
+                if hasattr(self, '_shared_storage_path') and hasattr(self, '_private_storage_path'):
+                    self._create_symlinks_to_shared_storage()
+                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
@@ -326,3 +346,43 @@ class PlaylistSync:
             return len(recent_files)
         except Exception:
             return 0
+    
+    def _create_symlinks_to_shared_storage(self) -> None:
+        """Create symlinks from private storage to shared storage for Android access."""
+        try:
+            private_path = self._private_storage_path
+            shared_path = self._shared_storage_path
+            
+            if not private_path.exists():
+                return
+            
+            # Find all audio files in private storage
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+            
+            for file_path in private_path.rglob('*'):
+                if file_path.is_file() and file_path.suffix.lower() in audio_extensions:
+                    # Calculate relative path from private storage root
+                    relative_path = file_path.relative_to(private_path)
+                    shared_file_path = shared_path / relative_path
+                    
+                    # Create parent directories in shared storage if needed
+                    shared_file_path.parent.mkdir(parents=True, exist_ok=True)
+                    
+                    # Create symlink if it doesn't exist or points to wrong file
+                    if not shared_file_path.exists() or (shared_file_path.is_symlink() and shared_file_path.readlink() != file_path):
+                        # Remove existing symlink/file if it exists
+                        if shared_file_path.exists() or shared_file_path.is_symlink():
+                            shared_file_path.unlink()
+                        
+                        # Create the symlink
+                        shared_file_path.symlink_to(file_path)
+                        
+                        if self.config.get('debug', False):
+                            print(f"🔗 Created symlink: {shared_file_path} → {file_path}")
+            
+            print(f"✅ Music files are now accessible to Android apps in: {shared_path}")
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to create symlinks to shared storage: {e}")
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Symlink error: {e}")

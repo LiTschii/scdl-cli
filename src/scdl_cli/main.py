@@ -483,6 +483,67 @@ def clean(ctx: click.Context, playlist: Optional[str]) -> None:
 
 @main.command()
 @click.pass_context
+def setup_android(ctx: click.Context) -> None:
+    """Setup Android shared storage access for music apps."""
+    sync = ctx.obj['sync']
+    
+    # Check if we're on Termux
+    if not Path('/data/data/com.termux').exists():
+        console.print("❌ This command is only for Termux on Android", style="red")
+        return
+    
+    console.print("🤖 Android Shared Storage Setup", style="bold blue")
+    console.print("═" * 40)
+    
+    console.print("\n📱 This will help you access your music from Android music players.")
+    console.print("   We'll use a symlink workaround to avoid file locking issues.")
+    
+    playlists = sync.list_playlists()
+    if not playlists:
+        console.print("\n📭 No playlists configured. Add playlists first with 'scli add' or 'scli manage'.", style="yellow")
+        return
+    
+    console.print(f"\n📋 Found {len(playlists)} playlist(s):")
+    
+    shared_paths = []
+    for playlist in playlists:
+        directory = Path(playlist['directory'])
+        
+        # Check if already using shared storage
+        termux_shared_paths = ['/storage/emulated/', '/sdcard/', '/storage/']
+        is_shared = any(str(directory).startswith(path) for path in termux_shared_paths)
+        
+        if is_shared:
+            shared_paths.append(str(directory))
+            console.print(f"  ✅ {playlist['url'][:50]}...")
+            console.print(f"     Already using shared storage: {directory}", style="green")
+        else:
+            console.print(f"  📁 {playlist['url'][:50]}...")
+            console.print(f"     Private storage: {directory}", style="dim")
+    
+    if not shared_paths:
+        console.print(f"\n💡 To make music accessible to Android apps:", style="blue")
+        console.print(f"   1. Use 'scli manage' to change playlist directories")
+        console.print(f"   2. Set paths to shared storage like: /sdcard/Music/scdl/")
+        console.print(f"   3. The app will automatically handle file locking with symlinks")
+    else:
+        console.print(f"\n🎵 Your music should be accessible to Android music apps at:", style="green")
+        for path in shared_paths:
+            console.print(f"   📁 {path}")
+        
+        if click.confirm("\nWould you like to run a sync to ensure all symlinks are updated?"):
+            console.print("🔄 Running sync to update symlinks...", style="blue")
+            
+            for playlist in playlists:
+                result = sync.sync_playlist(playlist['url'])
+                if result.success:
+                    console.print(f"✅ Updated: {playlist['url'][:40]}...", style="green")
+                else:
+                    console.print(f"❌ Failed: {playlist['url'][:40]}...", style="red")
+
+
+@main.command()
+@click.pass_context
 def test_client_id(ctx: click.Context) -> None:
     """Test client ID auto-generation functionality."""
     from .utils.client_id import ClientIDManager
