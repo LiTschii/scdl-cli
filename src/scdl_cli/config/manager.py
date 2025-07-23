@@ -33,8 +33,14 @@ class ConfigManager:
     
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration."""
+        # Use Termux-friendly default path if in Termux environment
+        if Path('/data/data/com.termux').exists():
+            default_output = str(Path.home() / 'Music' / 'scdl')  # $HOME/Music/scdl
+        else:
+            default_output = str(Path.home() / 'Downloads' / 'scdl')
+            
         return {
-            'output_dir': str(Path.home() / 'Downloads' / 'scdl'),
+            'output_dir': default_output,
             'format': 'mp3',
             'quality': 'best',
             'client_id': '',

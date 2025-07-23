@@ -64,6 +64,16 @@ class PlaylistSync:
         
         # Create directory if it doesn't exist
         dir_path = Path(directory).expanduser().absolute()
+        
+        # Check for Termux shared storage issues
+        termux_shared_paths = ['/storage/emulated/', '/sdcard/', '/storage/']
+        if any(str(dir_path).startswith(path) for path in termux_shared_paths):
+            # Detect if we're in Termux
+            if Path('/data/data/com.termux').exists():
+                print("⚠️  WARNING: You're using Android shared storage which doesn't support file locking.")
+                print("   This may cause 'Could not acquire lock' errors with scdl.")
+                print(f"   Consider using Termux private storage instead: $HOME/Music/scdl/")
+        
         try:
             dir_path.mkdir(parents=True, exist_ok=True)
         except Exception as e:
