@@ -85,8 +85,9 @@ def list(ctx: click.Context) -> None:
 @main.command()
 @click.option('--playlist', help='Sync specific playlist URL only')
 @click.option('--dry-run', is_flag=True, help='Show what would be downloaded without downloading')
+@click.option('--debug', is_flag=True, help='Enable debug output')
 @click.pass_context
-def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool) -> None:
+def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool, debug: bool) -> None:
     """Synchronize all configured playlists or a specific one."""
     sync_manager = ctx.obj['sync']
     
@@ -111,6 +112,9 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool) -> None:
             
             for playlist_url in playlists_to_sync:
                 progress.update(task, description=f"Syncing {playlist_url}")
+                # Override config debug setting if command line flag is provided
+                if debug:
+                    sync_manager.config.set('debug', True)
                 result = sync_manager.sync_playlist(playlist_url, dry_run=dry_run)
                 
                 if result.success:
@@ -141,6 +145,8 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool) -> None:
               help='Download original artwork during sync')
 @click.option('--sync-original-name/--no-sync-original-name', default=True,
               help='Keep original file names during sync')
+@click.option('--debug/--no-debug', default=False,
+              help='Enable debug output from scdl')
 @click.pass_context
 def config(
     ctx: click.Context,
@@ -150,7 +156,8 @@ def config(
     sync_remove_deleted: bool,
     sync_update_metadata: bool,
     sync_original_art: bool,
-    sync_original_name: bool
+    sync_original_name: bool,
+    debug: bool
 ) -> None:
     """Configure scdl-cli settings."""
     config_mgr = ctx.obj['config']
@@ -163,6 +170,7 @@ def config(
     config_data = {
         'format': format,
         'quality': quality,
+        'debug': debug,
         'sync': {
             'remove_deleted': sync_remove_deleted,
             'update_metadata': sync_update_metadata,

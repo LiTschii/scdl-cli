@@ -46,7 +46,8 @@ class ConfigManager:
                 'update_metadata': False,  # Re-download for metadata updates
                 'original_art': True,  # Download original artwork
                 'original_name': True  # Keep original file names
-            }
+            },
+            'debug': False  # Enable debug output
         }
     
     def get(self, key: str, default: Any = None) -> Any:

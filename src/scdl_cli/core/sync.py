@@ -181,6 +181,10 @@ class PlaylistSync:
         # Use only --sync flag which handles archive internally
         cmd.extend(['--sync', str(archive_file)])
         
+        # Add debug flag if enabled
+        if self.config.get('debug', False):
+            cmd.append('--debug')
+        
         # Add sync behavior configuration
         sync_config = self.config.get('sync', {})
         
@@ -222,6 +226,10 @@ class PlaylistSync:
         # Archive file for tracking downloads (first run creates the archive)
         archive_file = Path(directory) / 'scdl_archive.txt'
         cmd.extend(['--download-archive', str(archive_file)])
+        
+        # Add debug flag if enabled
+        if self.config.get('debug', False):
+            cmd.append('--debug')
         
         # Add sync behavior configuration
         sync_config = self.config.get('sync', {})
