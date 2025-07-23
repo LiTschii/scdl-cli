@@ -108,8 +108,16 @@ class PlaylistSync:
         directory = mapping['directory']
         archive_file = Path(directory) / 'scdl_archive.txt'
         
-        # Ensure directory exists
-        Path(directory).mkdir(parents=True, exist_ok=True)
+        # Ensure directory exists with proper permissions
+        dir_path = Path(directory)
+        dir_path.mkdir(parents=True, exist_ok=True)
+        
+        # Set directory permissions to be writable (755)
+        try:
+            import stat
+            dir_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+        except Exception as e:
+            self.logger.warning(f"Could not set directory permissions: {e}")
         
         # For first-time sync, don't use --sync flag, just download-archive
         is_first_sync = not archive_file.exists()
@@ -146,6 +154,17 @@ class PlaylistSync:
                 if result.stderr:
                     print(f"🐛 DEBUG: STDERR:\n{result.stderr}")
             
+            # Check for specific locking issues in output
+            stderr_text = result.stderr or ""
+            if "Could not acquire lock" in stderr_text:
+                # This is usually a permission issue or concurrent process
+                error_msg = "File locking issue detected. This might be due to:\n"
+                error_msg += "- Directory permission problems\n"
+                error_msg += "- Another scdl process running\n"
+                error_msg += "- File system access issues\n"
+                error_msg += f"Try running: chmod -R 755 '{directory}'"
+                return SyncResult(success=False, error=error_msg)
+            
             if result.returncode == 0:
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
@@ -153,6 +172,11 @@ class PlaylistSync:
                 
                 # Count new files (basic heuristic)
                 files_count = self._count_new_files(directory)
+                
+                # If no files were counted but scdl succeeded, check if locking caused skips
+                if files_count == 0 and "Skipping" in stderr_text:
+                    return SyncResult(success=False, error="Files were skipped due to locking issues. Check directory permissions.")
+                
                 return SyncResult(success=True, files_count=files_count)
             else:
                 error_msg = result.stderr or result.stdout or "Unknown error"
