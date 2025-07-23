@@ -163,9 +163,12 @@ class PlaylistSync:
             # Don't wrap scdl command with su - it won't have access to Termux packages
             # Instead, we'll use su only for specific file operations that need root permissions
             
-            # Show command and output when debug is enabled
+            # Show clean progress or debug info
             if self.config.get('debug', False):
                 print(f"\n🐛 DEBUG: Executing command: {' '.join(cmd)}")
+            else:
+                # Show clean progress without debug noise
+                print(f"🔄 Downloading tracks from playlist...")
             
             result = subprocess.run(
                 cmd,
@@ -259,9 +262,11 @@ class PlaylistSync:
         if sync_config.get('original_name', True):
             cmd.append('--original-name')
         
-        # Metadata handling
-        if sync_config.get('update_metadata', False):
-            cmd.append('--force-metadata')
+        # Always force metadata to ensure artwork is embedded
+        cmd.append('--force-metadata')
+        
+        # Add artist to filename if missing (helps with organization)
+        cmd.append('--addtofile')
         
         # Audio format
         format_type = self.config.get('format', 'mp3')
@@ -305,9 +310,11 @@ class PlaylistSync:
         if sync_config.get('original_name', True):
             cmd.append('--original-name')
         
-        # Metadata handling
-        if sync_config.get('update_metadata', False):
-            cmd.append('--force-metadata')
+        # Always force metadata to ensure artwork is embedded
+        cmd.append('--force-metadata')
+        
+        # Add artist to filename if missing (helps with organization)
+        cmd.append('--addtofile')
         
         # Audio format
         format_type = self.config.get('format', 'mp3')
@@ -321,23 +328,30 @@ class PlaylistSync:
     
     
     def _count_new_files(self, directory: str) -> int:
-        """Count recently downloaded files (basic heuristic)."""
+        """Count newly downloaded files by comparing with archive."""
         try:
             path = Path(directory)
             if not path.exists():
                 return 0
             
-            # Count audio files modified in the last minute
-            # This is a simple heuristic for newly downloaded files
+            # Get list of files from archive to see what should have been downloaded
+            archive_file = path / 'scdl_archive.txt'
+            if not archive_file.exists():
+                # No archive file, count all audio files as new
+                audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+                return len([f for f in path.rglob('*') if f.is_file() and f.suffix.lower() in audio_extensions])
+            
+            # Count files modified in the last 5 minutes (more reasonable than 1 minute)
             import time
             current_time = time.time()
-            recent_threshold = current_time - 60  # 1 minute ago
+            recent_threshold = current_time - 300  # 5 minutes ago
             
-            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg'}
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
             recent_files = []
             
             for file_path in path.rglob('*'):
-                if (file_path.suffix.lower() in audio_extensions and 
+                if (file_path.is_file() and 
+                    file_path.suffix.lower() in audio_extensions and 
                     file_path.stat().st_mtime > recent_threshold):
                     recent_files.append(file_path)
             
