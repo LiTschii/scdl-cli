@@ -135,80 +135,118 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool, debug: bool
 
 @main.command()
 @click.option('--client-id', help='SoundCloud client ID (optional - will auto-generate if not provided)')
-@click.option('--format', default='mp3', help='Default audio format')
-@click.option('--quality', default='best', help='Default audio quality')
-@click.option('--sync-remove-deleted/--no-sync-remove-deleted', default=True, 
+@click.option('--format', help='Default audio format (mp3, flac, opus)')
+@click.option('--quality', help='Default audio quality')
+@click.option('--sync-remove-deleted/--no-sync-remove-deleted', default=None,
               help='Remove local tracks no longer in playlist during sync')
-@click.option('--sync-update-metadata/--no-sync-update-metadata', default=False,
+@click.option('--sync-update-metadata/--no-sync-update-metadata', default=None,
               help='Force metadata updates during sync')
-@click.option('--sync-original-art/--no-sync-original-art', default=True,
+@click.option('--sync-original-art/--no-sync-original-art', default=None,
               help='Download original artwork during sync')
-@click.option('--sync-original-name/--no-sync-original-name', default=True,
+@click.option('--sync-original-name/--no-sync-original-name', default=None,
               help='Keep original file names during sync')
-@click.option('--debug/--no-debug', default=False,
+@click.option('--debug/--no-debug', default=None,
               help='Enable debug output from scdl')
-@click.option('--use-root/--no-use-root', default=False,
+@click.option('--use-root/--no-use-root', default=None,
               help='Use su for elevated permissions (rooted Android/Termux)')
 @click.pass_context
 def config(
     ctx: click.Context,
     client_id: Optional[str],
-    format: str,
-    quality: str,
-    sync_remove_deleted: bool,
-    sync_update_metadata: bool,
-    sync_original_art: bool,
-    sync_original_name: bool,
-    debug: bool,
-    use_root: bool
+    format: Optional[str],
+    quality: Optional[str],
+    sync_remove_deleted: Optional[bool],
+    sync_update_metadata: Optional[bool],
+    sync_original_art: Optional[bool],
+    sync_original_name: Optional[bool],
+    debug: Optional[bool],
+    use_root: Optional[bool]
 ) -> None:
     """Configure scdl-cli settings."""
     config_mgr = ctx.obj['config']
     
-    if client_id is None:
-        console.print("📋 Client ID is optional - scdl-cli can auto-generate one if needed", style="blue")
-        client_id = click.prompt('SoundCloud Client ID (press Enter to skip)', 
-                               default='', show_default=False, type=str)
+    # If no options provided, show current config
+    options_provided = any([
+        client_id is not None, format is not None, quality is not None,
+        sync_remove_deleted is not None, sync_update_metadata is not None,
+        sync_original_art is not None, sync_original_name is not None,
+        debug is not None, use_root is not None
+    ])
     
-    config_data = {
-        'format': format,
-        'quality': quality,
-        'debug': debug,
-        'use_root': use_root,
-        'sync': {
-            'remove_deleted': sync_remove_deleted,
-            'update_metadata': sync_update_metadata,
-            'original_art': sync_original_art,
-            'original_name': sync_original_name
-        }
-    }
+    if not options_provided:
+        console.print("📋 Current Configuration:", style="bold blue")
+        console.print(f"Format: {config_mgr.get('format', 'mp3')}")
+        console.print(f"Quality: {config_mgr.get('quality', 'best')}")
+        console.print(f"Debug: {config_mgr.get('debug', False)}")
+        console.print(f"Use Root: {config_mgr.get('use_root', False)}")
+        sync_config = config_mgr.get('sync', {})
+        console.print(f"Sync - Remove Deleted: {sync_config.get('remove_deleted', True)}")
+        console.print(f"Sync - Update Metadata: {sync_config.get('update_metadata', False)}")
+        console.print(f"Sync - Original Art: {sync_config.get('original_art', True)}")
+        console.print(f"Sync - Original Name: {sync_config.get('original_name', True)}")
+        
+        client_id_display = config_mgr.get_client_id()
+        if client_id_display:
+            masked = client_id_display[:8] + '...' + client_id_display[-4:] if len(client_id_display) > 12 else '***'
+            console.print(f"Client ID: {masked}")
+        else:
+            console.print("Client ID: Auto-generate (not set)")
+        console.print("\n💡 Use specific flags to change settings, e.g.: scli config --debug", style="dim")
+        return
     
-    # Only set client_id if provided
-    if client_id:
+    # Build update dict with only provided values
+    config_updates = {}
+    sync_updates = {}
+    
+    if format is not None:
+        config_updates['format'] = format
+    if quality is not None:
+        config_updates['quality'] = quality
+    if debug is not None:
+        config_updates['debug'] = debug
+    if use_root is not None:
+        config_updates['use_root'] = use_root
+        
+    if sync_remove_deleted is not None:
+        sync_updates['remove_deleted'] = sync_remove_deleted
+    if sync_update_metadata is not None:
+        sync_updates['update_metadata'] = sync_update_metadata
+    if sync_original_art is not None:
+        sync_updates['original_art'] = sync_original_art
+    if sync_original_name is not None:
+        sync_updates['original_name'] = sync_original_name
+    
+    if sync_updates:
+        # Merge with existing sync config
+        current_sync = config_mgr.get('sync', {})
+        current_sync.update(sync_updates)
+        config_updates['sync'] = current_sync
+    
+    # Handle client ID separately
+    if client_id is not None:
         # Test the provided client ID
         from .utils.client_id import ClientIDManager
         test_manager = ClientIDManager()
         if test_manager._is_valid_client_id(client_id):
-            config_data['client_id'] = client_id
+            config_updates['client_id'] = client_id
             console.print(f"✅ Using provided client ID: {client_id[:8]}...", style="green")
         else:
             console.print(f"❌ Provided client ID is invalid", style="red")
             console.print("✅ Will auto-generate client ID when needed", style="green")
-    else:
-        console.print("✅ Will auto-generate client ID when needed", style="green")
     
-    config_mgr.update(config_data)
-    config_mgr.save()
-    
-    console.print("✅ Configuration saved successfully", style="green")
-    
-    # Test the final configuration
-    console.print("🔍 Testing client ID configuration...", style="blue")
-    final_client_id = config_mgr.get_client_id()
-    if final_client_id:
-        console.print(f"✅ Client ID ready: {final_client_id[:8]}...", style="green")
-    else:
-        console.print("❌ Unable to obtain client ID", style="red")
+    # Apply updates
+    if config_updates:
+        config_mgr.update(config_updates)
+        config_mgr.save()
+        console.print("✅ Configuration updated successfully", style="green")
+        
+        # Show what was changed
+        for key, value in config_updates.items():
+            if key == 'sync':
+                for sync_key, sync_value in value.items():
+                    console.print(f"  • Sync {sync_key}: {sync_value}", style="dim")
+            else:
+                console.print(f"  • {key}: {value}", style="dim")
 
 
 @main.command()
