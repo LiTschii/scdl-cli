@@ -248,6 +248,13 @@ class PlaylistSync:
             
             
             if result.returncode == 0:
+                # Check for artwork files and metadata
+                try:
+                    self._check_artwork_status(directory)
+                except Exception as e:
+                    if self.config.get('debug', False):
+                        print(f"🐛 DEBUG: Failed to check artwork: {e}")
+                
                 # Add track URLs to metadata if we have them
                 try:
                     self._add_track_urls_to_metadata(directory, result.stderr or "")
@@ -463,6 +470,81 @@ class PlaylistSync:
         # Show important errors
         elif "Could not acquire lock" in line:
             print(f"🔒 File locking issue detected")
+    
+    def _check_artwork_status(self, directory: str) -> None:
+        """Check if artwork files exist and if metadata contains artwork."""
+        try:
+            from pathlib import Path
+            import time
+            
+            path = Path(directory)
+            if not path.exists():
+                return
+            
+            # Look for recent files (last 5 minutes)
+            current_time = time.time()
+            recent_threshold = current_time - 300
+            
+            audio_extensions = {'.mp3', '.wav', '.flac', '.m4a', '.ogg', '.opus'}
+            image_extensions = {'.jpg', '.jpeg', '.png', '.webp'}
+            
+            recent_audio_files = []
+            artwork_files = []
+            
+            # Find recent audio and image files
+            for file_path in path.rglob('*'):
+                if file_path.is_file() and file_path.stat().st_mtime > recent_threshold:
+                    if file_path.suffix.lower() in audio_extensions:
+                        recent_audio_files.append(file_path)
+                    elif file_path.suffix.lower() in image_extensions:
+                        artwork_files.append(file_path)
+            
+            if self.config.get('debug', False):
+                print(f"🎨 DEBUG: Found {len(artwork_files)} artwork files")
+                print(f"🎵 DEBUG: Found {len(recent_audio_files)} recent audio files")
+                
+                for artwork in artwork_files:
+                    print(f"🎨 DEBUG: Artwork file: {artwork.name}")
+            
+            # Check metadata for embedded artwork
+            for audio_file in recent_audio_files:
+                has_artwork = self._check_file_artwork(audio_file)
+                if self.config.get('debug', False):
+                    artwork_status = "✅ has artwork" if has_artwork else "❌ no artwork"
+                    print(f"🎵 DEBUG: {audio_file.name} - {artwork_status}")
+                
+        except Exception as e:
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Error checking artwork: {e}")
+    
+    def _check_file_artwork(self, file_path: Path) -> bool:
+        """Check if audio file has embedded artwork."""
+        try:
+            from mutagen import File
+            
+            audio_file = File(file_path)
+            if audio_file is None:
+                return False
+            
+            # Check different metadata formats for artwork
+            if hasattr(audio_file, 'tags') and audio_file.tags:
+                # Check for common artwork tags
+                artwork_keys = ['APIC', 'covr', 'METADATA_BLOCK_PICTURE', 'PICTURE']
+                for key in artwork_keys:
+                    if key in audio_file.tags:
+                        return True
+                
+                # Check MP4 cover art
+                if '\xa9ART' in audio_file.tags or 'covr' in audio_file.tags:
+                    return True
+            
+            return False
+            
+        except ImportError:
+            # mutagen not available
+            return False
+        except Exception:
+            return False
     
     def _add_track_urls_to_metadata(self, directory: str, scdl_output: str) -> None:
         """Extract track URLs from scdl output and add them to metadata under composer field."""
