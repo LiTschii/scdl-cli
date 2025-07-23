@@ -25,7 +25,14 @@ class ConfigManager:
         if self.config_path.exists():
             try:
                 with open(self.config_path, 'r') as f:
-                    return toml.load(f)
+                    config_data = toml.load(f)
+                    # Migrate old config: remove obsolete use_root setting
+                    if 'use_root' in config_data:
+                        del config_data['use_root']
+                        # Save the cleaned config immediately
+                        with open(self.config_path, 'w') as save_f:
+                            toml.dump(config_data, save_f)
+                    return config_data
             except Exception:
                 pass  # Fall back to defaults
         
@@ -53,8 +60,7 @@ class ConfigManager:
                 'original_art': True,  # Download original artwork
                 'original_name': True  # Keep original file names
             },
-            'debug': False,  # Enable debug output
-            'use_root': False  # Use su for elevated permissions (rooted Android/Termux)
+            'debug': False  # Enable debug output
         }
     
     def get(self, key: str, default: Any = None) -> Any:
