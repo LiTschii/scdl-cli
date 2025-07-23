@@ -140,18 +140,8 @@ class PlaylistSync:
                 cmd = self._build_sync_command(playlist_url, directory)
                 self.logger.info(f"Sync update, executing: {' '.join(cmd)}")
             
-            # Wrap command with su if use_root is enabled
-            if self.config.get('use_root', False):
-                # Find the full path to scdl and preserve environment
-                import shutil
-                scdl_path = shutil.which('scdl')
-                if scdl_path:
-                    # Replace 'scdl' with full path
-                    cmd[0] = scdl_path
-                
-                # Wrap with su but preserve environment variables (PATH, PYTHONPATH, etc.)
-                escaped_cmd = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd)
-                cmd = ['su', '-c', f'export PATH=$PATH:/data/data/com.termux/files/usr/bin && {escaped_cmd}']
+            # Don't wrap scdl command with su - it won't have access to Termux packages
+            # Instead, we'll use su only for specific file operations that need root permissions
             
             # Show command and output when debug is enabled
             if self.config.get('debug', False):
@@ -175,15 +165,46 @@ class PlaylistSync:
             # Check for specific locking issues in output
             stderr_text = result.stderr or ""
             if "Could not acquire lock" in stderr_text:
-                # This is usually a permission issue or concurrent process
-                error_msg = "File locking issue detected. This might be due to:\n"
-                error_msg += "- Directory permission problems\n"
-                error_msg += "- Another scdl process running\n"
-                error_msg += "- File system access issues\n"
-                error_msg += f"Try running: chmod -R 755 '{directory}'"
-                return SyncResult(success=False, error=error_msg)
+                # Try to fix permissions with root and retry once
+                if self.config.get('use_root', False):
+                    self.logger.info("Locking issue detected, trying to fix permissions with root...")
+                    self._fix_file_permissions_with_root(directory)
+                    
+                    # Retry the command once
+                    if self.config.get('debug', False):
+                        print("🔄 Retrying download after permission fix...")
+                    
+                    retry_result = subprocess.run(
+                        cmd if not self.config.get('use_root', False) else cmd,  # Same command
+                        capture_output=True,
+                        text=True,
+                        timeout=3600
+                    )
+                    
+                    if self.config.get('debug', False):
+                        print(f"🐛 DEBUG: Retry return code: {retry_result.returncode}")
+                        if retry_result.stderr:
+                            print(f"🐛 DEBUG: Retry STDERR:\n{retry_result.stderr}")
+                    
+                    # Use retry result instead of original
+                    result = retry_result
+                    stderr_text = result.stderr or ""
+                
+                # If still failing after retry (or no root permissions)
+                if "Could not acquire lock" in stderr_text:
+                    error_msg = "File locking issue detected. This might be due to:\n"
+                    error_msg += "- Directory permission problems\n"
+                    error_msg += "- Another scdl process running\n"
+                    error_msg += "- File system access issues\n"
+                    if not self.config.get('use_root', False):
+                        error_msg += f"\nTry: scli config --use-root\nOr manually: chmod -R 755 '{directory}'"
+                    return SyncResult(success=False, error=error_msg)
             
             if result.returncode == 0:
+                # Fix file permissions with root if enabled and locking issues occurred
+                if self.config.get('use_root', False) and "Could not acquire lock" in stderr_text:
+                    self._fix_file_permissions_with_root(directory)
+                
                 # Update last sync time
                 self.mappings[playlist_url]['last_sync'] = datetime.now().isoformat()
                 self._save_mappings()
@@ -307,6 +328,22 @@ class PlaylistSync:
         # mp3 is default, no flag needed
         
         return cmd
+    
+    def _fix_file_permissions_with_root(self, directory: str) -> None:
+        """Use su to fix file permissions when locking issues occur."""
+        try:
+            # Fix permissions on directory and all files
+            fix_cmd = ['su', '-c', f'export PATH=$PATH:/system/bin:/system/xbin && chmod -R 777 "{directory}"']
+            result = subprocess.run(fix_cmd, capture_output=True, text=True, timeout=30)
+            
+            if self.config.get('debug', False):
+                print(f"🐛 DEBUG: Permission fix command: {' '.join(fix_cmd)}")
+                print(f"🐛 DEBUG: Permission fix result: {result.returncode}")
+                if result.stderr:
+                    print(f"🐛 DEBUG: Permission fix stderr: {result.stderr}")
+                    
+        except Exception as e:
+            self.logger.warning(f"Could not fix permissions with root: {e}")
     
     def _count_new_files(self, directory: str) -> int:
         """Count recently downloaded files (basic heuristic)."""
