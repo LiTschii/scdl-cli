@@ -117,7 +117,7 @@ class PlaylistSync:
             import stat
             if self.config.get('use_root', False):
                 # Use su to set permissions on rooted systems
-                chmod_cmd = ['su', '-c', f'chmod -R 755 "{dir_path}"']
+                chmod_cmd = ['su', '-c', f'export PATH=$PATH:/system/bin:/system/xbin && chmod -R 755 "{dir_path}"']
                 subprocess.run(chmod_cmd, capture_output=True, text=True, timeout=10)
             else:
                 dir_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
@@ -142,9 +142,16 @@ class PlaylistSync:
             
             # Wrap command with su if use_root is enabled
             if self.config.get('use_root', False):
-                # Wrap the entire scdl command with su, properly escaping arguments
+                # Find the full path to scdl and preserve environment
+                import shutil
+                scdl_path = shutil.which('scdl')
+                if scdl_path:
+                    # Replace 'scdl' with full path
+                    cmd[0] = scdl_path
+                
+                # Wrap with su but preserve environment variables (PATH, PYTHONPATH, etc.)
                 escaped_cmd = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd)
-                cmd = ['su', '-c', escaped_cmd]
+                cmd = ['su', '-c', f'export PATH=$PATH:/data/data/com.termux/files/usr/bin && {escaped_cmd}']
             
             # Show command and output when debug is enabled
             if self.config.get('debug', False):
