@@ -47,7 +47,8 @@ class ConfigManager:
                 'original_art': True,  # Download original artwork
                 'original_name': True  # Keep original file names
             },
-            'debug': False  # Enable debug output
+            'debug': False,  # Enable debug output
+            'use_root': False  # Use su for elevated permissions (rooted Android/Termux)
         }
     
     def get(self, key: str, default: Any = None) -> Any:

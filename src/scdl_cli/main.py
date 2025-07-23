@@ -147,6 +147,8 @@ def sync(ctx: click.Context, playlist: Optional[str], dry_run: bool, debug: bool
               help='Keep original file names during sync')
 @click.option('--debug/--no-debug', default=False,
               help='Enable debug output from scdl')
+@click.option('--use-root/--no-use-root', default=False,
+              help='Use su for elevated permissions (rooted Android/Termux)')
 @click.pass_context
 def config(
     ctx: click.Context,
@@ -157,7 +159,8 @@ def config(
     sync_update_metadata: bool,
     sync_original_art: bool,
     sync_original_name: bool,
-    debug: bool
+    debug: bool,
+    use_root: bool
 ) -> None:
     """Configure scdl-cli settings."""
     config_mgr = ctx.obj['config']
@@ -171,6 +174,7 @@ def config(
         'format': format,
         'quality': quality,
         'debug': debug,
+        'use_root': use_root,
         'sync': {
             'remove_deleted': sync_remove_deleted,
             'update_metadata': sync_update_metadata,

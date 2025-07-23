@@ -115,7 +115,12 @@ class PlaylistSync:
         # Set directory permissions to be writable (755)
         try:
             import stat
-            dir_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
+            if self.config.get('use_root', False):
+                # Use su to set permissions on rooted systems
+                chmod_cmd = ['su', '-c', f'chmod -R 755 "{dir_path}"']
+                subprocess.run(chmod_cmd, capture_output=True, text=True, timeout=10)
+            else:
+                dir_path.chmod(stat.S_IRWXU | stat.S_IRGRP | stat.S_IXGRP | stat.S_IROTH | stat.S_IXOTH)
         except Exception as e:
             self.logger.warning(f"Could not set directory permissions: {e}")
         
@@ -134,6 +139,12 @@ class PlaylistSync:
                 # Subsequent syncs: use --sync for proper synchronization
                 cmd = self._build_sync_command(playlist_url, directory)
                 self.logger.info(f"Sync update, executing: {' '.join(cmd)}")
+            
+            # Wrap command with su if use_root is enabled
+            if self.config.get('use_root', False):
+                # Wrap the entire scdl command with su, properly escaping arguments
+                escaped_cmd = ' '.join(f'"{arg}"' if ' ' in arg else arg for arg in cmd)
+                cmd = ['su', '-c', escaped_cmd]
             
             # Show command and output when debug is enabled
             if self.config.get('debug', False):
