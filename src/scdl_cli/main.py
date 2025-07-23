@@ -492,54 +492,53 @@ def setup_android(ctx: click.Context) -> None:
         console.print("❌ This command is only for Termux on Android", style="red")
         return
     
-    console.print("🤖 Android Shared Storage Setup", style="bold blue")
+    console.print("🤖 Android Music Player Access Setup", style="bold blue")
     console.print("═" * 40)
     
-    console.print("\n📱 This will help you access your music from Android music players.")
-    console.print("   We'll use a symlink workaround to avoid file locking issues.")
+    console.print("\n📱 This will help you make your music accessible to Android music players.")
+    console.print("   Files downloaded to shared storage paths like /sdcard/ are accessible to other apps.")
     
     playlists = sync.list_playlists()
     if not playlists:
         console.print("\n📭 No playlists configured. Add playlists first with 'scli add' or 'scli manage'.", style="yellow")
         return
     
-    console.print(f"\n📋 Found {len(playlists)} playlist(s):")
+    console.print(f"\n📋 Current playlist storage locations:")
     
     shared_paths = []
+    private_paths = []
+    
     for playlist in playlists:
         directory = Path(playlist['directory'])
         
-        # Check if already using shared storage
+        # Check if using shared storage
         termux_shared_paths = ['/storage/emulated/', '/sdcard/', '/storage/']
         is_shared = any(str(directory).startswith(path) for path in termux_shared_paths)
         
         if is_shared:
-            shared_paths.append(str(directory))
-            console.print(f"  ✅ {playlist['url'][:50]}...")
-            console.print(f"     Already using shared storage: {directory}", style="green")
+            shared_paths.append((playlist['url'], str(directory)))
+            console.print(f"  ✅ Accessible to music apps:", style="green")
+            console.print(f"     {playlist['url'][:45]}...")
+            console.print(f"     📁 {directory}", style="dim")
         else:
-            console.print(f"  📁 {playlist['url'][:50]}...")
-            console.print(f"     Private storage: {directory}", style="dim")
+            private_paths.append((playlist['url'], str(directory)))
+            console.print(f"  🔒 Private storage (not accessible to music apps):", style="yellow")
+            console.print(f"     {playlist['url'][:45]}...")
+            console.print(f"     📁 {directory}", style="dim")
     
-    if not shared_paths:
-        console.print(f"\n💡 To make music accessible to Android apps:", style="blue")
-        console.print(f"   1. Use 'scli manage' to change playlist directories")
-        console.print(f"   2. Set paths to shared storage like: /sdcard/Music/scdl/")
-        console.print(f"   3. The app will automatically handle file locking with symlinks")
-    else:
-        console.print(f"\n🎵 Your music should be accessible to Android music apps at:", style="green")
-        for path in shared_paths:
+    if private_paths:
+        console.print(f"\n💡 To make music accessible to Android music players:", style="blue")
+        console.print(f"   • Use 'scli manage' to change directories for private storage playlists")
+        console.print(f"   • Recommended shared storage path: /sdcard/Music/scdl-cli/")
+        console.print(f"   • Files will be directly accessible to music players")
+        console.print(f"   • If you get file locking errors, use 'scli clean' and retry")
+    
+    if shared_paths:
+        console.print(f"\n🎵 Music accessible to Android apps:", style="green")
+        for url, path in shared_paths:
             console.print(f"   📁 {path}")
         
-        if click.confirm("\nWould you like to run a sync to ensure all symlinks are updated?"):
-            console.print("🔄 Running sync to update symlinks...", style="blue")
-            
-            for playlist in playlists:
-                result = sync.sync_playlist(playlist['url'])
-                if result.success:
-                    console.print(f"✅ Updated: {playlist['url'][:40]}...", style="green")
-                else:
-                    console.print(f"❌ Failed: {playlist['url'][:40]}...", style="red")
+        console.print(f"\n💡 Your music players should be able to find files in these locations.")
 
 
 @main.command()
